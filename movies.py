@@ -5,14 +5,11 @@ Created on Thu Dec 22 17:43:03 2016
 @author: marya
 """
 
-
-
-
 from __future__ import print_function
 import httplib2
 import os
 import random
-import string
+import requests
 
 from apiclient import discovery
 from oauth2client import client
@@ -87,12 +84,20 @@ def main():
         print('No data found.')
     else:
         print ('Retrieved data from spreadsheet.')
+        total = len(values)
+        count = 0
         
-        index, random_movie = random.choice(list(enumerate(values)))
+        index = random.randint(0, total - 1)
+        random_movie = values[index]
         
         # Has the movie already been watched?
         while len(random_movie) == 3:
-            index, random_movie = random.choice(list(enumerate(values)))
+            count += 1
+            if count >= total:
+                print("Sorry. You've watched all the movies.")
+                break
+            index = random.randint(0, total - 1)
+            random_movie = values[index]
             
         updateRange = 'C' + str(index + 2)
         body = { 'values': [['x']] }
@@ -100,10 +105,28 @@ def main():
         service.spreadsheets().values().update(
             spreadsheetId=spreadsheetId, range=updateRange,
             valueInputOption=valueInputOption, body=body).execute()
+            
+        imdbData = get_imdb(random_movie[0], random_movie[1])
+        
+        location = "4EC Campus Side"
+        time = "9pm"
+        name = "Maryam"
+        
+        message = "Hello Friends! \n"
+        message += "Tonight, we will be watching " + imdbData['Title'] + " in the " + location + " at " + time + ". "
+        message += "Here is some info about the movie:\n"
+        message += "Title: " + imdbData["Title"]
+        message += "\nYear: " + imdbData["Year"]
+        message += "\nGenre: " + imdbData["Genre"]
+        message += "\nPlot: " + imdbData["Plot"]
+        message += "\nRuntime: " + imdbData["Runtime"]
+        message += "\nActors: " + imdbData["Actors"]
+        message += "\n\nAll the best,\n" + name
+        
+        print(message)
         
         # get imdb link
         # email should have location, time, movie title, director and imdb link
-        
 
 # http://rosettacode.org/wiki/Send_email#Python
 # http://naelshiab.com/tutorial-send-email-python/
@@ -121,6 +144,18 @@ def sendemail(from_addr, to_addr, subject, message,
     text = msg.as_string()
     server.sendmail(from_addr, to_addr, text)
     server.quit()
+    
+def get_imdb(title, year):
+#    https://www.dataquest.io/blog/python-api-tutorial/
+#    https://www.omdbapi.com/
+    # default response is json
+    parameters = { "t": title, "y": year, "plot": "full" }
+    
+    # Make a get request with the parameters.
+    response = requests.get("http://www.omdbapi.com/?", params=parameters).json()
+    
+    # the response (the data the server returned)
+    return response
 
 if __name__ == '__main__':
     main()
