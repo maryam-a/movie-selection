@@ -20,6 +20,8 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
+import getpass
+
 try:
     import argparse
     flags = argparse.ArgumentParser(parents=[tools.argparser]).parse_args()
@@ -61,7 +63,7 @@ def get_credentials():
         print('Storing credentials to ' + credential_path)
     return credentials
 
-def main():
+def main(name, email, password, to_addr_list, location, time):
     """Shows basic usage of the Sheets API.
 
     Spreadsheet:
@@ -83,7 +85,7 @@ def main():
     if not values:
         print('No data found.')
     else:
-        print ('Retrieved data from spreadsheet.')
+        print ('\nRetrieved data from spreadsheet.')
         total = len(values)
         count = 0
         
@@ -95,10 +97,10 @@ def main():
             count += 1
             if count >= total:
                 print("Sorry. You've watched all the movies.")
-                break
+                return
             index = random.randint(0, total - 1)
             random_movie = values[index]
-            
+        
         updateRange = 'C' + str(index + 2)
         body = { 'values': [['x']] }
         valueInputOption = "USER_ENTERED"
@@ -108,33 +110,45 @@ def main():
             
         imdbData = get_imdb(random_movie[0], random_movie[1])
         
-        location = "4EC Campus Side"
-        time = "9pm"
-        name = "Maryam"
+        message = generate_message(name, location, time, imdbData)
         
-        message = "Hello Friends! \n"
-        message += "Tonight, we will be watching " + imdbData['Title'] + " in the " + location + " at " + time + ". "
-        message += "Here is some info about the movie:\n"
-        message += "Title: " + imdbData["Title"]
-        message += "\nYear: " + imdbData["Year"]
-        message += "\nGenre: " + imdbData["Genre"]
-        message += "\nPlot: " + imdbData["Plot"]
-        message += "\nRuntime: " + imdbData["Runtime"]
-        message += "\nActors: " + imdbData["Actors"]
-        message += "\n\nAll the best,\n" + name
-        
+        print("\nThis is what will be sent:\n")
         print(message)
+        confirmation = input("To confirm, type 'yes'. Otherwise, type 'no' ")
         
-        # get imdb link
-        # email should have location, time, movie title, director and imdb link
+        if confirmation == "yes":
+            sendemail(from_addr    = email, 
+                      to_addr_list = to_addr_list,
+                      subject      = 'Movie Night!', 
+                      message      = message, 
+                      password     = password)
+            print("\nSent email.")
+        else:
+            reset_body = { 'values': [['']] }
+            service.spreadsheets().values().update(
+            spreadsheetId=spreadsheetId, range=updateRange,
+            valueInputOption=valueInputOption, body=reset_body).execute()
+            
+def generate_message(name, location, time, imdbData):
+    message = "Hello Friends! \n"
+    message += "Tonight, we will be watching " + imdbData['Title'] + " in the " + location + " at " + time + ". "
+    message += "Here is some info about the movie:\n"
+    message += "Title: " + imdbData["Title"]
+    message += "\nYear: " + imdbData["Year"]
+    message += "\nGenre: " + imdbData["Genre"]
+    message += "\nPlot: " + imdbData["Plot"]
+    message += "\nRuntime: " + imdbData["Runtime"]
+    message += "\nActors: " + imdbData["Actors"]
+    message += "\n\nAll the best,\n" + name
+    return message
 
 # http://rosettacode.org/wiki/Send_email#Python
 # http://naelshiab.com/tutorial-send-email-python/
-def sendemail(from_addr, to_addr, subject, message,
+def sendemail(from_addr, to_addr_list, subject, message,
               password, smtpserver='smtp.gmail.com:587'):
     msg = MIMEMultipart()
     msg['From'] = from_addr
-    msg['To'] = to_addr
+    msg['To'] = ", ".join(to_addr_list)
     msg['Subject'] = subject
     msg.attach(MIMEText(message, 'plain'))
      
@@ -142,7 +156,7 @@ def sendemail(from_addr, to_addr, subject, message,
     server.starttls()
     server.login(from_addr, password)
     text = msg.as_string()
-    server.sendmail(from_addr, to_addr, text)
+    server.sendmail(from_addr, ", ".join(to_addr_list), text)
     server.quit()
     
 def get_imdb(title, year):
@@ -156,6 +170,20 @@ def get_imdb(title, year):
     
     # the response (the data the server returned)
     return response
+    
+def get_user_information():
+    name = input("What is your name? ")
+    email = input("What is your email address? ")
+    password = getpass.getpass(prompt="What is your password? ")
+    to_addr_list = [input("Who would you like to send the email to? ")]
+    other_email = input("Would you like to send it to another email? If not, type 'no' ")
+    while other_email != 'no':
+        to_addr_list.append(other_email)
+        other_email = input("Would you like to send it to another email? If not, type 'no' ")
+    location = input("Where would you like to host the movie? ")
+    time = input("What time will the movie start? ")
+    return name, email, password, to_addr_list, location, time
 
 if __name__ == '__main__':
-    main()
+    name, email, password, to_addr_list, location, time = get_user_information()
+    main(name, email, password, to_addr_list, location, time)
