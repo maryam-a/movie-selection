@@ -5,17 +5,23 @@ Created on Thu Dec 22 17:43:03 2016
 @author: marya
 """
 
-# email should have location, time, movie title, director and imdb link
+
 
 
 from __future__ import print_function
 import httplib2
 import os
+import random
+import string
 
 from apiclient import discovery
 from oauth2client import client
 from oauth2client import tools
 from oauth2client.file import Storage
+
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
 try:
     import argparse
@@ -61,8 +67,7 @@ def get_credentials():
 def main():
     """Shows basic usage of the Sheets API.
 
-    Creates a Sheets API service object and prints the names and majors of
-    students in a sample spreadsheet:
+    Spreadsheet:
     https://docs.google.com/spreadsheets/d/1lqP2ZNlnYE_V5GehbvW4CgsWqlcdakWE_Q3w2Z5SAVQ/edit
     """
     credentials = get_credentials()
@@ -73,7 +78,7 @@ def main():
                               discoveryServiceUrl=discoveryUrl)
 
     spreadsheetId = '1lqP2ZNlnYE_V5GehbvW4CgsWqlcdakWE_Q3w2Z5SAVQ'
-    rangeName = 'A2:B'
+    rangeName = 'A2:C'
     result = service.spreadsheets().values().get(
         spreadsheetId=spreadsheetId, range=rangeName).execute()
     values = result.get('values', [])
@@ -81,11 +86,41 @@ def main():
     if not values:
         print('No data found.')
     else:
-        print('Movie, Year:')
-        for row in values:
-            # Print columns A and B, which correspond to indices 0 and 1.
-            print('%s, %s' % (row[0], row[1]))
+        print ('Retrieved data from spreadsheet.')
+        
+        index, random_movie = random.choice(list(enumerate(values)))
+        
+        # Has the movie already been watched?
+        while len(random_movie) == 3:
+            index, random_movie = random.choice(list(enumerate(values)))
+            
+        updateRange = 'C' + str(index + 2)
+        body = { 'values': [['x']] }
+        valueInputOption = "USER_ENTERED"
+        service.spreadsheets().values().update(
+            spreadsheetId=spreadsheetId, range=updateRange,
+            valueInputOption=valueInputOption, body=body).execute()
+        
+        # get imdb link
+        # email should have location, time, movie title, director and imdb link
+        
 
+# http://rosettacode.org/wiki/Send_email#Python
+# http://naelshiab.com/tutorial-send-email-python/
+def sendemail(from_addr, to_addr, subject, message,
+              password, smtpserver='smtp.gmail.com:587'):
+    msg = MIMEMultipart()
+    msg['From'] = from_addr
+    msg['To'] = to_addr
+    msg['Subject'] = subject
+    msg.attach(MIMEText(message, 'plain'))
+     
+    server = smtplib.SMTP('smtp.gmail.com', 587)
+    server.starttls()
+    server.login(from_addr, password)
+    text = msg.as_string()
+    server.sendmail(from_addr, to_addr, text)
+    server.quit()
 
 if __name__ == '__main__':
     main()
