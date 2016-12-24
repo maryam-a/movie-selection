@@ -10,8 +10,6 @@ Referenced the following sources during development:
 - http://naelshiab.com/tutorial-send-email-python/
 - https://www.dataquest.io/blog/python-api-tutorial/
 - https://www.omdbapi.com/
-
-TODO: Change spreadsheetId
 """
 from __future__ import print_function
 import httplib2
@@ -30,6 +28,7 @@ import random
 import requests
 import getpass
 import re
+import spreadsheet_id as sid
 
 try:
     import argparse
@@ -43,6 +42,7 @@ SCOPES = 'https://www.googleapis.com/auth/spreadsheets'
 CLIENT_SECRET_FILE = 'client_secret.json'
 APPLICATION_NAME = 'IAP Movies'
 
+SPREADSHEET_ID = sid.SPREADSHEET_ID
 
 def get_credentials():
     """Gets valid user credentials from storage.
@@ -183,11 +183,9 @@ def main(name, email, password, to_addr_list, location, time):
                     'version=v4')
     service = discovery.build('sheets', 'v4', http=http,
                               discoveryServiceUrl=discoveryUrl)
-
-    spreadsheetId = '1lqP2ZNlnYE_V5GehbvW4CgsWqlcdakWE_Q3w2Z5SAVQ'
     rangeName = 'A2:C'
     result = service.spreadsheets().values().get(
-        spreadsheetId=spreadsheetId, range=rangeName).execute()
+        spreadsheetId=SPREADSHEET_ID, range=rangeName).execute()
     values = result.get('values', [])
 
     if not values:
@@ -214,7 +212,7 @@ def main(name, email, password, to_addr_list, location, time):
         body = { 'values': [['x']] }
         valueInputOption = "USER_ENTERED"
         service.spreadsheets().values().update(
-            spreadsheetId=spreadsheetId, range=updateRange,
+            spreadsheetId=SPREADSHEET_ID, range=updateRange,
             valueInputOption=valueInputOption, body=body).execute()
             
         imdbData = get_imdb(random_movie[0], random_movie[1])
@@ -235,7 +233,7 @@ def main(name, email, password, to_addr_list, location, time):
         else:
             reset_body = { 'values': [['']] }
             service.spreadsheets().values().update(
-            spreadsheetId=spreadsheetId, range=updateRange,
+            spreadsheetId=SPREADSHEET_ID, range=updateRange,
             valueInputOption=valueInputOption, body=reset_body).execute()
             print("\nThe spreadsheet has been reset.")
 
