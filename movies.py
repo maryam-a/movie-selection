@@ -2,14 +2,20 @@
 """
 Created on Thu Dec 22 17:43:03 2016
 
-@author: marya
-"""
+@author: maryan-a
 
+Referenced the following sources during development:
+- https://developers.google.com/sheets/api/quickstart/python
+- http://rosettacode.org/wiki/Send_email#Python
+- http://naelshiab.com/tutorial-send-email-python/
+- https://www.dataquest.io/blog/python-api-tutorial/
+- https://www.omdbapi.com/
+
+TODO: Change spreadsheetId
+"""
 from __future__ import print_function
 import httplib2
 import os
-import random
-import requests
 
 from apiclient import discovery
 from oauth2client import client
@@ -20,7 +26,10 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
+import random
+import requests
 import getpass
+import re
 
 try:
     import argparse
@@ -62,12 +71,111 @@ def get_credentials():
             credentials = tools.run(flow, store)
         print('Storing credentials to ' + credential_path)
     return credentials
+    
+def get_imdb(title, year):
+    """ Gets information about the movie.
+    
+    Args:
+        title (str) - the title of the movie
+        year (str) - the year of the movie
+        
+    Returns:
+        Response, the information about the movie from IMDB
+    """
+    parameters = { "t": title, "y": year, "plot": "full" }
+    response = requests.get("http://www.omdbapi.com/?", params=parameters).json()
+    return response
+    
+def get_user_information():
+    """ Prompts the user for information to send the email
+    
+    Returns:
+        Name, email, password, to_addr_list, location, time
+    """
+    p = re.compile("[\w._\-]+@gmail.com")
+    name = input("What is your name? ")
+    
+    email = input("What is your gmail address? ")
+    while not p.match(email):
+        email = input("Your email address must end in @gmail.com. Please enter a valid gmail address. ")
+        
+    password = getpass.getpass(prompt="What is your password? ")
+    to_addr_list = [input("Who would you like to send the email to? ")]
+    
+    other_email = input("Would you like to send it to another email? If not, type 'no' ")
+    while other_email != 'no':
+        to_addr_list.append(other_email)
+        other_email = input("Would you like to send it to another email? If not, type 'no' ")
+        
+    location = input("Where would you like to host the movie? ")
+    time = input("What time will the movie start? ")
+    return name, email, password, to_addr_list, location, time
+    
+def generate_message(name, location, time, imdbData):
+    """ Generates the body of the email to be sent.
+    
+    Contains information about the movie, including the year, genre, plot, runtime,
+    and list of actors.
+    
+    Args:
+        name (str) - the name of the user sending the email
+        location (str) - the venue of the movie
+        time (str) - the time that the movie will be shown
+        imdbData (data) - the movie data
+        
+    Returns:
+        Message, the body of the email to be sent
+    """
+    message = "Hello Friends! \n"
+    message += "Tonight, we will be watching " + imdbData['Title'] + " in the " + location + " at " + time + ". "
+    
+    if imdbData["Response"] == "True":
+        message += "Here is some info about the movie:\n"
+        message += "Title: " + imdbData["Title"]
+        message += "\nYear: " + imdbData["Year"]
+        message += "\nGenre: " + imdbData["Genre"]
+        message += "\nPlot: " + imdbData["Plot"]
+        message += "\nRuntime: " + imdbData["Runtime"]
+        message += "\nActors: " + imdbData["Actors"]
+    else:
+        message += "\n Unfortunately, the movie could not be found in IMDB but you can Google the movie to find out more about it."
+    
+    message += "\n\nAll the best,\n" + name
+    return message
+
+def sendemail(from_addr, to_addr_list, subject, message, password):
+    """ Sends an email with a subject and message
+    
+    Must be sent using a Gmail email address.    
+    """
+    msg = MIMEMultipart()
+    msg['From'] = from_addr
+    msg['To'] = ", ".join(to_addr_list)
+    msg['Subject'] = subject
+    msg.attach(MIMEText(message, 'plain'))
+     
+    server = smtplib.SMTP('smtp.gmail.com', 587)
+    server.starttls()
+    server.login(from_addr, password)
+    text = msg.as_string()
+    server.sendmail(from_addr, ", ".join(to_addr_list), text)
+    server.quit()
 
 def main(name, email, password, to_addr_list, location, time):
-    """Shows basic usage of the Sheets API.
-
-    Spreadsheet:
-    https://docs.google.com/spreadsheets/d/1lqP2ZNlnYE_V5GehbvW4CgsWqlcdakWE_Q3w2Z5SAVQ/edit
+    """ Selects movie to watch and sends an email notification.
+    
+    No email is sent if:
+        - the spreadsheet is empty
+        - all the movies have been watched
+        - the user does not approve of the email to be sent
+    
+    Args:
+        name (str) - the name of the user sending the email
+        email (str) - the user's Gmail address
+        password (str) - the user's password for his/ her Gmail account
+        to_addr_list (list(str)) - the emails to which the message will be sent
+        location (str) - the venue of the movie
+        time (str) - the time that the movie will be shown    
     """
     credentials = get_credentials()
     http = credentials.authorize(httplib2.Http())
@@ -83,7 +191,8 @@ def main(name, email, password, to_addr_list, location, time):
     values = result.get('values', [])
 
     if not values:
-        print('No data found.')
+        print('\nNo data found.')
+        return
     else:
         print ('\nRetrieved data from spreadsheet.')
         total = len(values)
@@ -128,61 +237,7 @@ def main(name, email, password, to_addr_list, location, time):
             service.spreadsheets().values().update(
             spreadsheetId=spreadsheetId, range=updateRange,
             valueInputOption=valueInputOption, body=reset_body).execute()
-            
-def generate_message(name, location, time, imdbData):
-    message = "Hello Friends! \n"
-    message += "Tonight, we will be watching " + imdbData['Title'] + " in the " + location + " at " + time + ". "
-    message += "Here is some info about the movie:\n"
-    message += "Title: " + imdbData["Title"]
-    message += "\nYear: " + imdbData["Year"]
-    message += "\nGenre: " + imdbData["Genre"]
-    message += "\nPlot: " + imdbData["Plot"]
-    message += "\nRuntime: " + imdbData["Runtime"]
-    message += "\nActors: " + imdbData["Actors"]
-    message += "\n\nAll the best,\n" + name
-    return message
-
-# http://rosettacode.org/wiki/Send_email#Python
-# http://naelshiab.com/tutorial-send-email-python/
-def sendemail(from_addr, to_addr_list, subject, message,
-              password, smtpserver='smtp.gmail.com:587'):
-    msg = MIMEMultipart()
-    msg['From'] = from_addr
-    msg['To'] = ", ".join(to_addr_list)
-    msg['Subject'] = subject
-    msg.attach(MIMEText(message, 'plain'))
-     
-    server = smtplib.SMTP('smtp.gmail.com', 587)
-    server.starttls()
-    server.login(from_addr, password)
-    text = msg.as_string()
-    server.sendmail(from_addr, ", ".join(to_addr_list), text)
-    server.quit()
-    
-def get_imdb(title, year):
-#    https://www.dataquest.io/blog/python-api-tutorial/
-#    https://www.omdbapi.com/
-    # default response is json
-    parameters = { "t": title, "y": year, "plot": "full" }
-    
-    # Make a get request with the parameters.
-    response = requests.get("http://www.omdbapi.com/?", params=parameters).json()
-    
-    # the response (the data the server returned)
-    return response
-    
-def get_user_information():
-    name = input("What is your name? ")
-    email = input("What is your email address? ")
-    password = getpass.getpass(prompt="What is your password? ")
-    to_addr_list = [input("Who would you like to send the email to? ")]
-    other_email = input("Would you like to send it to another email? If not, type 'no' ")
-    while other_email != 'no':
-        to_addr_list.append(other_email)
-        other_email = input("Would you like to send it to another email? If not, type 'no' ")
-    location = input("Where would you like to host the movie? ")
-    time = input("What time will the movie start? ")
-    return name, email, password, to_addr_list, location, time
+            print("\nThe spreadsheet has been reset.")
 
 if __name__ == '__main__':
     name, email, password, to_addr_list, location, time = get_user_information()
