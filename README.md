@@ -4,7 +4,7 @@ This project randomly selects a movie and sends an email notification to persons
 
 ### Requirements
 - Python 3
-- `pip install requests`
+- `pip install requests httplib2`
 - A Google Account
 - Steps 1 & 2 from the [Google Sheets Python Quickstart Guide](https://developers.google.com/sheets/api/quickstart/python)
 

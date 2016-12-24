@@ -11,23 +11,27 @@ Referenced the following sources during development:
 - https://www.dataquest.io/blog/python-api-tutorial/
 - https://www.omdbapi.com/
 """
+# Standard libraries
 from __future__ import print_function
-import httplib2
 import os
+import random
+import getpass
+import re
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
+# Google Python Libraries
+import httplib2
 from apiclient import discovery
 from oauth2client import client
 from oauth2client import tools
 from oauth2client.file import Storage
 
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-
-import random
+# Other External Libraries
 import requests
-import getpass
-import re
+
+# Constants File
 import spreadsheet_id as sid
 
 try:
@@ -43,6 +47,8 @@ CLIENT_SECRET_FILE = 'client_secret.json'
 APPLICATION_NAME = 'IAP Movies'
 
 SPREADSHEET_ID = sid.SPREADSHEET_ID
+VALUE_INPUT_OPTION = "USER_ENTERED"
+EMAIL_SUBJECT = 'Movie Night!'
 
 def get_credentials():
     """Gets valid user credentials from storage.
@@ -71,89 +77,99 @@ def get_credentials():
             credentials = tools.run(flow, store)
         print('Storing credentials to ' + credential_path)
     return credentials
-    
+
 def get_imdb(title, year):
     """ Gets information about the movie.
-    
+
     Args:
         title (str) - the title of the movie
         year (str) - the year of the movie
-        
+
     Returns:
         Response, the information about the movie from IMDB
     """
-    parameters = { "t": title, "y": year, "plot": "full" }
+    parameters = {"t": title, "y": year, "plot": "full"}
     response = requests.get("http://www.omdbapi.com/?", params=parameters).json()
     return response
-    
+
 def get_user_information():
     """ Prompts the user for information to send the email
-    
+
     Returns:
         Name, email, password, to_addr_list, location, time
     """
-    p = re.compile("[\w._\-]+@gmail.com")
+    pattern = re.compile(r"[\w._\-]+@gmail.com")
     name = input("What is your name? ")
-    
+
     email = input("What is your gmail address? ")
-    while not p.match(email):
-        email = input("Your email address must end in @gmail.com. Please enter a valid gmail address. ")
-        
+    while not pattern.match(email):
+        email = input("Your email address must end in @gmail.com." +
+                      "Please enter a valid gmail address. ")
+
     password = getpass.getpass(prompt="What is your password? ")
     to_addr_list = [input("Who would you like to send the email to? ")]
-    
+
     other_email = input("Would you like to send it to another email? If not, type 'no' ")
     while other_email != 'no':
         to_addr_list.append(other_email)
         other_email = input("Would you like to send it to another email? If not, type 'no' ")
-        
+
     location = input("Where would you like to host the movie? ")
     time = input("What time will the movie start? ")
     return name, email, password, to_addr_list, location, time
-    
-def generate_message(name, location, time, imdbData):
+
+def generate_message(name, location, time, imdb_data):
     """ Generates the body of the email to be sent.
-    
+
     Contains information about the movie, including the year, genre, plot, runtime,
     and list of actors.
-    
+
     Args:
         name (str) - the name of the user sending the email
         location (str) - the venue of the movie
         time (str) - the time that the movie will be shown
-        imdbData (data) - the movie data
-        
+        imdb_data (dict) - the movie data
+
     Returns:
         Message, the body of the email to be sent
     """
     message = "Hello Friends! \n"
-    message += "Tonight, we will be watching " + imdbData['Title'] + " in the " + location + " at " + time + ". "
-    
-    if imdbData["Response"] == "True":
+    message += "Tonight, we will be watching " + imdb_data['Title'] + " in the "
+    message += location + " at " + time + ". "
+
+    if imdb_data["Response"] == "True":
         message += "Here is some info about the movie:\n"
-        message += "Title: " + imdbData["Title"]
-        message += "\nYear: " + imdbData["Year"]
-        message += "\nGenre: " + imdbData["Genre"]
-        message += "\nPlot: " + imdbData["Plot"]
-        message += "\nRuntime: " + imdbData["Runtime"]
-        message += "\nActors: " + imdbData["Actors"]
+        message += "Title: " + imdb_data["Title"]
+        message += "\nYear: " + imdb_data["Year"]
+        message += "\nGenre: " + imdb_data["Genre"]
+        message += "\nPlot: " + imdb_data["Plot"]
+        message += "\nRuntime: " + imdb_data["Runtime"]
+        message += "\nActors: " + imdb_data["Actors"]
     else:
-        message += "\n Unfortunately, the movie could not be found in IMDB but you can Google the movie to find out more about it."
-    
+        message += "\n Unfortunately, the movie could not be found in IMDB but "
+        message += "you can Google the movie to find out more about it."
+
     message += "\n\nAll the best,\n" + name
     return message
 
-def sendemail(from_addr, to_addr_list, subject, message, password):
+def send_email(from_addr, to_addr_list, subject, message, password):
     """ Sends an email with a subject and message
-    
-    Must be sent using a Gmail email address.    
+
+    Must be sent using a Gmail email address.
+
+    Args:
+        from_addr (str) - the user's Gmail address
+        to_addr_list (list(str)) - the emails to which the message will be sent
+        subject (str) - the title of the email
+        message (str) - the body of the email
+        password (str) - the user's password for his/ her Gmail account
     """
     msg = MIMEMultipart()
     msg['From'] = from_addr
     msg['To'] = ", ".join(to_addr_list)
     msg['Subject'] = subject
     msg.attach(MIMEText(message, 'plain'))
-     
+
     server = smtplib.SMTP('smtp.gmail.com', 587)
     server.starttls()
     server.login(from_addr, password)
@@ -163,29 +179,28 @@ def sendemail(from_addr, to_addr_list, subject, message, password):
 
 def main(name, email, password, to_addr_list, location, time):
     """ Selects movie to watch and sends an email notification.
-    
     No email is sent if:
         - the spreadsheet is empty
         - all the movies have been watched
         - the user does not approve of the email to be sent
-    
+
     Args:
         name (str) - the name of the user sending the email
         email (str) - the user's Gmail address
         password (str) - the user's password for his/ her Gmail account
         to_addr_list (list(str)) - the emails to which the message will be sent
         location (str) - the venue of the movie
-        time (str) - the time that the movie will be shown    
+        time (str) - the time that the movie will be shown
     """
     credentials = get_credentials()
     http = credentials.authorize(httplib2.Http())
-    discoveryUrl = ('https://sheets.googleapis.com/$discovery/rest?'
-                    'version=v4')
+    discovery_url = ('https://sheets.googleapis.com/$discovery/rest?'
+                     'version=v4')
     service = discovery.build('sheets', 'v4', http=http,
-                              discoveryServiceUrl=discoveryUrl)
-    rangeName = 'A2:C'
+                              discoveryServiceUrl=discovery_url)
+    range_name = 'A2:C'
     result = service.spreadsheets().values().get(
-        spreadsheetId=SPREADSHEET_ID, range=rangeName).execute()
+        spreadsheetId=SPREADSHEET_ID, range=range_name).execute()
     values = result.get('values', [])
 
     if not values:
@@ -195,10 +210,10 @@ def main(name, email, password, to_addr_list, location, time):
         print ('\nRetrieved data from spreadsheet.')
         total = len(values)
         count = 0
-        
+
         index = random.randint(0, total - 1)
         random_movie = values[index]
-        
+
         # Has the movie already been watched?
         while len(random_movie) == 3:
             count += 1
@@ -207,34 +222,30 @@ def main(name, email, password, to_addr_list, location, time):
                 return
             index = random.randint(0, total - 1)
             random_movie = values[index]
-        
-        updateRange = 'C' + str(index + 2)
-        body = { 'values': [['x']] }
-        valueInputOption = "USER_ENTERED"
+
+        update_range = 'C' + str(index + 2)
+        body = {'values': [['x']]}
+
         service.spreadsheets().values().update(
-            spreadsheetId=SPREADSHEET_ID, range=updateRange,
-            valueInputOption=valueInputOption, body=body).execute()
-            
-        imdbData = get_imdb(random_movie[0], random_movie[1])
-        
-        message = generate_message(name, location, time, imdbData)
-        
+            spreadsheetId=SPREADSHEET_ID, range=update_range,
+            valueInputOption=VALUE_INPUT_OPTION, body=body).execute()
+
+        imdb_data = get_imdb(random_movie[0], random_movie[1])
+
+        message = generate_message(name, location, time, imdb_data)
+
         print("\nThis is what will be sent:\n")
         print(message)
         confirmation = input("To confirm, type 'yes'. Otherwise, type 'no' ")
-        
+
         if confirmation == "yes":
-            sendemail(from_addr    = email, 
-                      to_addr_list = to_addr_list,
-                      subject      = 'Movie Night!', 
-                      message      = message, 
-                      password     = password)
+            send_email(email, to_addr_list, EMAIL_SUBJECT, message, password)
             print("\nSent email.")
         else:
-            reset_body = { 'values': [['']] }
+            reset_body = {'values': [['']]}
             service.spreadsheets().values().update(
-            spreadsheetId=SPREADSHEET_ID, range=updateRange,
-            valueInputOption=valueInputOption, body=reset_body).execute()
+                spreadsheetId=SPREADSHEET_ID, range=update_range,
+                valueInputOption=VALUE_INPUT_OPTION, body=reset_body).execute()
             print("\nThe spreadsheet has been reset.")
 
 if __name__ == '__main__':
